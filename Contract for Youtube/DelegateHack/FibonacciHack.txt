@@ -1,0 +1,32 @@
+https://swcregistry.io/docs/SWC-112
+https://github.com/kadenzipfel/smart-contract-attack-vectors/blob/master/vulnerabilities/delegatecall-untrusted-callee.md
+https://blog.sigmaprime.io/solidity-security.html#delegatecall
+
+delegatecall позволяет многократно переиспользовать код в разных контрактах, что очень удобно
+
+Пример взлом кошелька Parity
+0x863DF6BFa4469f3ead0bE8f9F2AAE51c91A907b4
+
+436 строке 
+  function() payable {
+    // just being sent some cash?
+    if (msg.value > 0)
+      Deposit(msg.sender, msg.value);
+    else if (msg.data.length > 0)
+      _walletLibrary.delegatecall(msg.data);
+  }
+
+передает все вызовы библиотеке _walletLibrary
+
+Предполагаемая работа этих контрактов заключалась в том, чтобы иметь простой недорогой развертываемый Walletконтракт, 
+кодовая база и основная функциональность которого были включены в WalletLibraryконтракт.
+
+Пользователь сделал это, вызвав initWallet() 
+функцию в WalletLibrary контракте, став владельцем библиотечного контракта. 
+Тот же пользователь, впоследствии вызвавший kill() функцию и весь eth оказался замороженным на кошельках пользователей, тк весь функционал кошелька был реализован в библиотеке.
+
+
+Для борьбы с этой уязвимостью в Solidity внедрили специальное обозначение для библиотечных контрактов Library.
+И ввели ряд ограничений:
+- библиотеки не могут иметь собственных состояний
+- не могут быть уничтожены selfdestruct

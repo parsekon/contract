@@ -1,0 +1,6 @@
+https://medium.com/coinmonks/protect-your-solidity-smart-contracts-from-reentrancy-attacks-9972c3af7c21
+https://blog.sigmaprime.io/solidity-security.html#reentrancy
+https://consensys.github.io/smart-contract-best-practices/attacks/reentrancy/
+https://github.com/kadenzipfel/smart-contract-attack-vectors/blob/master/attacks/reentrancy.md
+
+https://hackingdistributed.com/2016/06/18/analysis-of-the-dao-exploit/
